@@ -47,3 +47,31 @@ open preview.html
    ในเวิร์กโฟลว์เรนเดอร์เฟรม
 6. SVG จาก Figma: gradient เป็น `userSpaceOnUse` absolute (ไม่ใช่ objectBoundingBox),
    path มีแค่ M/L/C/Z, ไม่มี transform — แปลงตรง ๆ ได้เลย
+
+## State Machine (dragon_sm.json)
+
+Lottie ไม่มี state machine ในตัว (ต่างจาก Rive) — จึงทำตาม pattern มาตรฐานของ Lottie:
+
+- ไฟล์เดียว `lottie/dragon_sm.json` (~285KB): **45 layers = 3 อารมณ์ซ้อนกัน**
+  keyframes ของ happy/celebrate ถูกเลื่อนไปกองที่ segment ของตัวเอง
+- timeline 576 เฟรม: `idle [0-180] → to_happy [180-192] → happy [192-372] →
+  to_celebrate [372-384] → celebrate [384-564] → to_idle [564-576]` + **markers** ป้ายชื่อ
+- ทรานสิชัน = crossfade 12 เฟรม (opacity ต่อเลเยอร์) — เข้าเป้า fade-in ตอน `to_<ตัวเอง>`
+  fade-out ตอน `to_<ตัวถัดไป>` → **เรียกจาก state ไหนก็ได้** (ทุก state จบที่ rest pose เหมือนกัน)
+- **JS host เป็นตัว state machine**: `dragon.setEmotion('happy')` → playSegments([blend, state])
+  เล่นจบแล้ววน loop ที่ state ใหม่ (อ่าน segment จาก markers ใน JSON)
+
+```js
+window.dragon.setEmotion('happy')   // crossfade 200ms แล้ว loop happy ตลอดไป
+```
+
+เปิด `preview.html` กดปุ่มสลับ หรือกด "Auto demo" ให้วนเอง
+
+### gotchas เพิ่มเวลาทำ state machine
+
+- **อย่าใช้ precomp (ty:0) สำหรับ state ที่เลื่อนเวลา**: lottie-web SVG CompElement
+  เล่นเนื้อหาตามเวลา main comp ตรง ๆ (`st` ไม่ถูกใช้) — segment ที่ 192+ เลยความยาว
+  precomp = ว่าง; แถม clipPath ของ precomp สร้างจาก `w/h` **ของ layer** (ไม่ใส่ →
+  `Lundefined` → clip ว่าง → มองไม่เห็นทั้งก้อน) — flat layers + shift keys ปลอดภัยกว่า
+- sparkles ที่มี opacity animation ของตัวเอง ต้องย้าย twinkle ไปที่ shape-level `tr.o`
+  เพื่อให้ layer `ks.o` ว่างสำหรับ state timeline

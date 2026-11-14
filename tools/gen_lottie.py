@@ -500,6 +500,94 @@ def build_dragon(svg_path, variant="idle"):
     }
 
 
+
+
+BLEND = 12  # crossfade frames between states
+
+STATE_SEGS = {  # computed in build_state_machine
+}
+
+
+def build_state_machine(svg_path, states=("idle", "happy", "celebrate")):
+    """One Lottie file = all variant layers flattened into the main comp.
+
+    Each variant's keyframes are shifted to its own segment; crossfades are
+    per-layer opacity timelines (state timeline x layer content). No precomps:
+    lottie-web's CompElement timing ignores `st`, which makes shifted precomp
+    playback unreliable.
+    """
+    variants = {v: build_dragon(svg_path, v) for v in states}
+    T = 180
+    BLEND = 12
+    segs = {}
+    t = 0
+    order = []
+    for i, v in enumerate(states):
+        segs[v] = (t, t + T)
+        order.append((v, segs[v]))
+        nxt = states[(i + 1) % len(states)]
+        segs[f"to_{nxt}"] = (t + T, t + T + BLEND)
+        order.append((f"to_{nxt}", segs[f"to_{nxt}"]))
+        t += T + BLEND
+    total = t
+
+    def state_opacity(v):
+        s0, e0 = segs[v]
+        to_in = segs[f"to_{v}"]
+        nxt = states[(states.index(v) + 1) % len(states)]
+        to_out = segs[f"to_{nxt}"]
+        if s0 == 0:
+            pts = [(0, 100), (e0, 100), (to_out[1], 0), (to_in[0], 0), (to_in[1], 100)]
+        else:
+            pts = [(0, 0), (to_in[0], 0), (to_in[1], 100), (e0, 100), (to_out[1], 0)]
+        pts.sort()
+        keys = []
+        for tt, vv in pts:
+            if not keys or keys[-1][1] != vv:
+                keys.append((tt, vv))
+        if keys[-1][0] != total:
+            keys.append((total, keys[-1][1]))
+        return keys
+
+    layers = []
+    for v in states:
+        shift = segs[v][0]
+        old2new = {}
+        for l in variants[v]["layers"]:
+            old2new[l["ind"]] = len(layers) + 1
+            l = dict(l)
+            l["ind"] = len(layers) + 1
+            l["ip"] = 0
+            l["op"] = total
+            # shift animated keyframes of transform props
+            for key in ("p", "s", "r"):
+                prop = l["ks"].get(key)
+                if prop and prop.get("a") == 1:
+                    for k in prop["k"]:
+                        k["t"] += shift
+            # sparkle twinkle: move from layer opacity to shape transform
+            if l["nm"] == "Sparkle" and l["ks"]["o"].get("a") == 1:
+                twinkle = l["ks"]["o"]
+                for grp in l["shapes"]:
+                    for it in grp["it"]:
+                        if it.get("ty") == "tr":
+                            it["o"] = twinkle
+            # layer opacity = state visibility timeline
+            l["ks"]["o"] = kf(state_opacity(v))
+            layers.append(l)
+        # remap parent indices within the same variant
+        for l in layers[-len(variants[v]["layers"]):]:
+            if "parent" in l:
+                l["parent"] = old2new[l["parent"]]
+
+    markers = [{"t": s, "d": e - s, "cm": name} for name, (s, e) in order]
+    return {
+        "v": "5.9.0", "fr": 60, "ip": 0, "op": total, "w": W, "h": H,
+        "nm": "BabyDragon_StateMachine", "ddd": 0,
+        "assets": [], "layers": layers, "markers": markers,
+    }
+
+
 if __name__ == "__main__":
     svg = sys.argv[1] if len(sys.argv) > 1 else "svg/dragon_full.svg"
     outdir = sys.argv[2] if len(sys.argv) > 2 else "lottie"
@@ -511,3 +599,9 @@ if __name__ == "__main__":
         with open(path, "w") as f:
             json.dump(data, f, separators=(",", ":"))
         print(f"{path}: {os.path.getsize(path)} bytes, {len(data['layers'])} layers")
+    sm = build_state_machine(svg)
+    path = os.path.join(outdir, "dragon_sm.json")
+    with open(path, "w") as f:
+        json.dump(sm, f, separators=(",", ":"))
+    print(f"{path}: {os.path.getsize(path)} bytes, op={sm['op']}, "
+          f"markers={[(m['cm'], m['t'], m['d']) for m in sm['markers']]}")
