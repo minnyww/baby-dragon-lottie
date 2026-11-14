@@ -541,10 +541,13 @@ def build_state_machine(svg_path, states=("idle", "happy", "celebrate")):
         else:
             pts = [(0, 0), (to_in[0], 0), (to_in[1], 100), (e0, 100), (to_out[1], 0)]
         pts.sort()
+        # keep EVERY key: consecutive equal values are HOLD anchors — deduping
+        # them makes lottie interpolate across the whole state (ghosting!)
         keys = []
         for tt, vv in pts:
-            if not keys or keys[-1][1] != vv:
-                keys.append((tt, vv))
+            if keys and keys[-1][0] == tt:
+                continue
+            keys.append((tt, vv))
         if keys[-1][0] != total:
             keys.append((total, keys[-1][1]))
         return keys

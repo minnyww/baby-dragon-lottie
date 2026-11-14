@@ -75,3 +75,6 @@ window.dragon.setEmotion('happy')   // crossfade 200ms แล้ว loop happy �
   `Lundefined` → clip ว่าง → มองไม่เห็นทั้งก้อน) — flat layers + shift keys ปลอดภัยกว่า
 - sparkles ที่มี opacity animation ของตัวเอง ต้องย้าย twinkle ไปที่ shape-level `tr.o`
   เพื่อให้ layer `ks.o` ว่างสำหรับ state timeline
+- **ห้าม dedup keyframes ที่ค่าซ้ำกัน**: keyframe คู่ที่ค่าเท่ากัน (เช่น (180,100)→(192,100))
+  คือ "hold" — ลบทิ้งแล้ว lottie จะ interpolate 100→0 ยาวตลอด state (ภาพซ้อนผีตลอดเวลา)
+  ต้องกรองเฉพาะ timestamp ที่ซ้ำจริง ๆ
